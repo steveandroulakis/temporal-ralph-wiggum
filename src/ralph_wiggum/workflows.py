@@ -60,6 +60,7 @@ class RalphWorkflow:
                     history=self._history,
                     model=input.model,
                     iteration=self._iteration,
+                    completion_promise=input.completion_promise,
                 ),
                 start_to_close_timeout=timedelta(minutes=5),
                 retry_policy=RetryPolicy(

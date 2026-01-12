@@ -33,10 +33,17 @@ async def call_claude(input: CallClaudeInput) -> str:
 
 Your task: {input.prompt}
 
-If you have completed the task to your satisfaction, output the completion promise phrase wrapped in <promise> tags.
-Otherwise, continue working on the task and explain your progress.
+When you have completed the task to your satisfaction, you MUST signal completion by outputting EXACTLY this tag with NO other text inside it:
+<promise>COMPLETION_PHRASE</promise>
 
-IMPORTANT: Only output the completion promise when you are TRULY done with the task."""
+Replace COMPLETION_PHRASE with exactly this phrase: {input.completion_promise}
+
+CRITICAL RULES FOR COMPLETION:
+- The promise tag must contain ONLY the exact phrase "{input.completion_promise}" - nothing else
+- Do NOT put descriptions, summaries, or explanations inside the promise tag
+- WRONG: <promise>I completed the task about {input.completion_promise}</promise>
+- CORRECT: <promise>{input.completion_promise}</promise>
+- Only output the promise tag when you are TRULY done with the task"""
 
     response = client.messages.create(
         model=input.model,

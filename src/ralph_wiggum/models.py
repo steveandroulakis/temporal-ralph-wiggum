@@ -35,6 +35,7 @@ class CallClaudeInput:
     history: list
     model: str
     iteration: int
+    completion_promise: str
 
 
 @dataclass
