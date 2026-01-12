@@ -5,7 +5,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from .workflows import RalphWorkflow
-from .activities import call_claude, check_completion
+from .activities import check_completion, generate_plan, execute_task
 
 TASK_QUEUE = "ralph-wiggum-queue"
 
@@ -18,7 +18,7 @@ async def run_worker():
         client,
         task_queue=TASK_QUEUE,
         workflows=[RalphWorkflow],
-        activities=[call_claude, check_completion],
+        activities=[check_completion, generate_plan, execute_task],
     )
 
     print(f"Starting worker on task queue: {TASK_QUEUE}")
