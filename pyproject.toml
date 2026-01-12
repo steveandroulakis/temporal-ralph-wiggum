@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ralph-wiggum-temporal"
+version = "0.1.0"
+description = "Ralph Wiggum loop implemented as a Temporal workflow"
+requires-python = ">=3.9"
+dependencies = [
+    "temporalio>=1.7.0",
+    "anthropic>=0.39.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ralph_wiggum"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
