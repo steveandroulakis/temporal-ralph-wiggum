@@ -3,6 +3,39 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
+DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+
+
+@dataclass
+class Story:
+    """A high-level work item in the PRD."""
+
+    id: str  # "story-1", "story-2", etc.
+    title: str
+    description: str
+    status: str = "pending"  # pending | in_progress | completed
+    completion_summary: str = ""  # Filled when marked complete
+
+
+@dataclass
+class PRD:
+    """Product Requirements Document - list of stories."""
+
+    stories: list[Story] = field(default_factory=list)
+
+    def get_next_incomplete(self) -> Optional[Story]:
+        """Get the next story that isn't completed."""
+        for s in self.stories:
+            if s.status != "completed":
+                return s
+        return None
+
+    def all_complete(self) -> bool:
+        """Check if all stories are completed."""
+        return len(self.stories) > 0 and all(
+            s.status == "completed" for s in self.stories
+        )
+
 
 @dataclass
 class RalphWorkflowInput:
@@ -11,12 +44,13 @@ class RalphWorkflowInput:
     prompt: str
     completion_promise: str
     max_iterations: int = 20
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = DEFAULT_MODEL
     history_window_size: int = 3  # Rolling window for context
     # State for continue-as-new
     current_iteration: int = 0
     conversation_history: list = field(default_factory=list)
-    previous_plan: list = field(default_factory=list)  # For continue-as-new
+    prd: Optional[PRD] = None  # PRD state for continue-as-new
+    progress_summary: str = ""  # Rolling progress summary
 
 
 @dataclass
@@ -30,40 +64,32 @@ class RalphWorkflowOutput:
 
 
 @dataclass
-class CallClaudeInput:
-    """Input for the call_claude activity."""
-
-    prompt: str
-    history: list
-    model: str
-    iteration: int
-    completion_promise: str
-
-
-@dataclass
-class CheckCompletionInput:
-    """Input for the check_completion activity."""
-
-    response: str
-    completion_promise: str
-
-
-@dataclass
 class TodoItem:
-    """A single task in the plan."""
+    """A single task in the plan for a story."""
 
     content: str
     status: str = "pending"  # pending | in_progress | completed
 
 
+# Activity inputs
+
+
 @dataclass
-class GeneratePlanInput:
-    """Input for the generate_plan activity."""
+class GeneratePRDInput:
+    """Input for the generate_prd activity."""
 
     prompt: str
+    model: str
+
+
+@dataclass
+class GenerateTasksInput:
+    """Input for the generate_tasks activity (tasks for ONE story)."""
+
+    story: Story
+    original_prompt: str
+    progress_summary: str
     iteration: int
-    history: list
-    previous_plan: Optional[list] = None
 
 
 @dataclass
@@ -72,9 +98,51 @@ class ExecuteTaskInput:
 
     task_content: str
     original_prompt: str
-    history: list
+    story_context: str  # Story title and description
+    history: list  # Rolling history window
     model: str
     iteration: int
     task_index: int
     total_tasks: int
+
+
+@dataclass
+class EvaluateStoryInput:
+    """Input for the evaluate_story_completion activity."""
+
+    story: Story
+    task_outputs: list[str]  # All outputs from this iteration
+    original_prompt: str
+    progress_summary: str
+
+
+@dataclass
+class EvaluateStoryOutput:
+    """Output from the evaluate_story_completion activity."""
+
+    is_complete: bool
+    summary: str  # What was accomplished
+    updated_progress: str  # New progress_summary
+
+
+@dataclass
+class EvaluateOverallInput:
+    """Input for the evaluate_overall_completion activity."""
+
+    prd: PRD
+    original_prompt: str
+    completion_promise: str
+
+
+# Legacy inputs (kept for backward compatibility during transition)
+
+
+@dataclass
+class CallClaudeInput:
+    """Input for the call_claude activity (legacy)."""
+
+    prompt: str
+    history: list
+    model: str
+    iteration: int
     completion_promise: str

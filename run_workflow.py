@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, "src")
 
 from ralph_wiggum.workflows import RalphWorkflow
-from ralph_wiggum.models import RalphWorkflowInput
+from ralph_wiggum.models import RalphWorkflowInput, DEFAULT_MODEL
 
 TASK_QUEUE = "ralph-wiggum-queue"
 
@@ -75,8 +75,8 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="claude-sonnet-4-5-20250514",
-        help="Claude model to use (default: claude-sonnet-4-5-20250514)",
+        default=DEFAULT_MODEL,
+        help=f"Claude model to use (default: {DEFAULT_MODEL})",
     )
 
     args = parser.parse_args()
