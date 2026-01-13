@@ -36,11 +36,6 @@ python run_workflow.py --prompt "Write a haiku about socks" --completion-promise
 ```
 
 ## Example prompts
-Multi-step prompts that benefit from planning and evaluation:
-```bash
-python run_workflow.py --prompt "1) Write two short poems (4–6 lines) about a rainy subway commute: one wistful, one upbeat. 2) Pick the better one based on overall excitement and emotional clarity, then revise it to be even more engaging. 3) Provide a one-sentence rationale for the choice and end with <promise>DONE</promise> when finished." --completion-promise "DONE"
-python run_workflow.py --prompt "1) Summarize the text I provide in three different tones: formal, friendly, and punchy. 2) Choose the version that feels most professional but still readable, and tighten it for brevity. 3) Explain briefly why it meets that bar, then end with <promise>DONE</promise> when finished." --completion-promise "DONE"
-```
 
 ### Noir detective story example
 Iterative creative writing with strict quality bar. The AI drafts a short noir detective story, scores it as a discerning expert, and only completes when it hits 10/10. Failed attempts collect feedback as "lessons" and retry—demonstrating how the loop refines output across iterations until quality criteria are met:
