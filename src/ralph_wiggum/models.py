@@ -28,6 +28,9 @@ class RalphWorkflowOutput:
     iterations_used: int
     final_response: str
     completion_detected: bool
+    extracted_result: str = ""  # The actual deliverable
+    result_type: str = ""  # "code", "text", "analysis", "plan", "other"
+    result_summary: str = ""  # One-line description
 
 
 # Iteration decision models
@@ -93,3 +96,24 @@ class EvaluateIterationOutput:
     updated_progress: str
     completion_detected: bool
     final_response: str
+
+
+@dataclass
+class ExtractFinalResultInput:
+    """Input for the extract_final_result activity."""
+
+    prompt: str
+    progress_summary: str
+    history: list
+    completion_promise: str
+    completion_detected: bool = True
+    max_iterations: int | None = None
+
+
+@dataclass
+class ExtractFinalResultOutput:
+    """Output from the extract_final_result activity."""
+
+    final_result: str  # The actual deliverable
+    result_type: str  # "code", "text", "analysis", "plan", "other"
+    summary: str  # One-line description

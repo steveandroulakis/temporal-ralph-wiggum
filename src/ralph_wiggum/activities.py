@@ -12,6 +12,8 @@ from .models import (
     ExecuteTaskInput,
     EvaluateIterationInput,
     EvaluateIterationOutput,
+    ExtractFinalResultInput,
+    ExtractFinalResultOutput,
 )
 
 
@@ -282,4 +284,61 @@ CRITICAL RULES:
         updated_progress=updated_progress,
         completion_detected=result["completion_detected"],
         final_response=result["final_response"],
+    )
+
+
+@activity.defn
+async def extract_final_result(input: ExtractFinalResultInput) -> ExtractFinalResultOutput:
+    """Extract the actual deliverable from completed work."""
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    history_context = ""
+    if input.history:
+        history_context = "\n\n".join(
+            f"[{m['role']}]: {m['content']}"
+            for m in input.history
+        )
+
+    completion_note = "The task was evaluated as complete."
+    if not input.completion_detected:
+        completion_note = (
+            "The task was NOT evaluated as complete. "
+            f"Max iterations reached ({input.max_iterations})."
+        )
+
+    system = f"""You are extracting the final deliverable from an autonomous task.
+
+Original request: {input.prompt}
+
+Progress made: {input.progress_summary}
+
+Recent conversation:
+{history_context}
+
+{completion_note} (promise phrase "{input.completion_promise}" detected when complete).
+
+YOUR JOB: Extract and return the ACTUAL DELIVERABLE.
+- NOT a summary of what was done
+- The concrete output: code, text, analysis, etc.
+- If deliverable spans multiple responses, synthesize into coherent final result
+- If work was iterative (revisions), return only the final version
+- Preserve formatting (code blocks, lists, etc.)
+- You MUST call submit_final_result and fill all required fields"""
+
+    messages = [{"role": "user", "content": "Extract the final deliverable from the completed work."}]
+
+    response = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=4096,
+        system=system,
+        messages=messages,
+    )
+
+    text_content = " ".join(b.text for b in response.content if hasattr(b, "text"))
+    if not text_content:
+        raise RuntimeError("No text content returned from extraction model")
+    return ExtractFinalResultOutput(
+        final_result=text_content or "No deliverable extracted",
+        result_type="text" if text_content else "other",
+        summary="Task completed (extracted from text response)" if text_content else "Task completed",
     )

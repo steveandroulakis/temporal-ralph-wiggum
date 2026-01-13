@@ -19,6 +19,8 @@ from ralph_wiggum.models import (
     ExecuteTaskInput,
     EvaluateIterationInput,
     EvaluateIterationOutput,
+    ExtractFinalResultInput,
+    ExtractFinalResultOutput,
 )
 from ralph_wiggum.workflows import RalphWorkflow
 
@@ -257,6 +259,14 @@ class TestRalphWorkflow:
                 final_response=f"Done! <promise>{input.completion_promise}</promise>",
             )
 
+        @activity.defn(name="extract_final_result")
+        async def mock_extract(input: ExtractFinalResultInput) -> ExtractFinalResultOutput:
+            return ExtractFinalResultOutput(
+                final_result="Haiku written",
+                result_type="text",
+                summary="A haiku about coding",
+            )
+
         async with await WorkflowEnvironment.start_time_skipping() as env:
             async with Worker(
                 env.client,
@@ -267,6 +277,7 @@ class TestRalphWorkflow:
                     mock_generate_tasks,
                     mock_execute_task,
                     mock_evaluate,
+                    mock_extract,
                 ],
             ):
                 result = await env.client.execute_workflow(
@@ -283,6 +294,8 @@ class TestRalphWorkflow:
                 assert result.completed is True
                 assert result.completion_detected is True
                 assert result.iterations_used == 1
+                assert result.extracted_result == "Haiku written"
+                assert result.result_type == "text"
 
     @pytest.mark.asyncio
     async def test_workflow_completes_with_multi_task(self):
@@ -315,6 +328,14 @@ class TestRalphWorkflow:
                 final_response=f"Done! <promise>{input.completion_promise}</promise>",
             )
 
+        @activity.defn(name="extract_final_result")
+        async def mock_extract(input: ExtractFinalResultInput) -> ExtractFinalResultOutput:
+            return ExtractFinalResultOutput(
+                final_result="Built something",
+                result_type="code",
+                summary="Code output",
+            )
+
         async with await WorkflowEnvironment.start_time_skipping() as env:
             async with Worker(
                 env.client,
@@ -325,6 +346,7 @@ class TestRalphWorkflow:
                     mock_generate_tasks,
                     mock_execute_task,
                     mock_evaluate,
+                    mock_extract,
                 ],
             ):
                 result = await env.client.execute_workflow(
@@ -373,6 +395,14 @@ class TestRalphWorkflow:
                 final_response=f"<promise>{input.completion_promise}</promise>" if is_done else "More work needed",
             )
 
+        @activity.defn(name="extract_final_result")
+        async def mock_extract(input: ExtractFinalResultInput) -> ExtractFinalResultOutput:
+            return ExtractFinalResultOutput(
+                final_result="Final output",
+                result_type="text",
+                summary="Completed after iterations",
+            )
+
         async with await WorkflowEnvironment.start_time_skipping() as env:
             async with Worker(
                 env.client,
@@ -383,6 +413,7 @@ class TestRalphWorkflow:
                     mock_generate_tasks,
                     mock_execute_task,
                     mock_evaluate,
+                    mock_extract,
                 ],
             ):
                 result = await env.client.execute_workflow(
@@ -487,6 +518,14 @@ class TestRalphWorkflowQueries:
                 final_response=f"<promise>{input.completion_promise}</promise>",
             )
 
+        @activity.defn(name="extract_final_result")
+        async def mock_extract(input: ExtractFinalResultInput) -> ExtractFinalResultOutput:
+            return ExtractFinalResultOutput(
+                final_result="Output",
+                result_type="text",
+                summary="Done",
+            )
+
         async with await WorkflowEnvironment.start_time_skipping() as env:
             async with Worker(
                 env.client,
@@ -497,6 +536,7 @@ class TestRalphWorkflowQueries:
                     mock_generate_tasks,
                     mock_execute_task,
                     mock_evaluate,
+                    mock_extract,
                 ],
             ):
                 handle = await env.client.start_workflow(

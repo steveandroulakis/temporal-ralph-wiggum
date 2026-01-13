@@ -12,12 +12,14 @@ with workflow.unsafe.imports_passed_through():
         GenerateTasksInput,
         ExecuteTaskInput,
         EvaluateIterationInput,
+        ExtractFinalResultInput,
     )
     from .activities import (
         decide_iteration_mode,
         generate_tasks,
         execute_task,
         evaluate_iteration_completion,
+        extract_final_result,
     )
 
 
@@ -31,6 +33,9 @@ class RalphWorkflow:
         self._progress_summary: str = ""
         self._current_tasks: list = []
         self._history_window_size = 3
+        self._extracted_result: str = ""
+        self._result_type: str = ""
+        self._result_summary: str = ""
 
     @workflow.query
     def get_current_iteration(self) -> int:
@@ -51,6 +56,15 @@ class RalphWorkflow:
     def get_current_tasks(self) -> list:
         """Query current task list."""
         return self._current_tasks
+
+    @workflow.query
+    def get_extracted_result(self) -> dict:
+        """Query extracted final result."""
+        return {
+            "result": self._extracted_result,
+            "type": self._result_type,
+            "summary": self._result_summary,
+        }
 
     def _get_rolling_history(self) -> list:
         """Return last N messages for context."""
@@ -199,19 +213,79 @@ class RalphWorkflow:
                 promise_tag = f"<promise>{input.completion_promise}</promise>"
                 has_promise = promise_tag in eval_result.final_response
 
+                # Extract actual deliverable from conversation history
+                extract_result = await workflow.execute_activity(
+                    extract_final_result,
+                    ExtractFinalResultInput(
+                        prompt=input.prompt,
+                        progress_summary=self._progress_summary,
+                        history=self._history[-5:],  # Last 5 messages
+                        completion_promise=input.completion_promise,
+                        completion_detected=True,
+                        max_iterations=input.max_iterations,
+                    ),
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=3,
+                        initial_interval=timedelta(seconds=1),
+                        maximum_interval=timedelta(seconds=30),
+                    ),
+                    summary=f"iteration {self._iteration + 1}: extracting result",
+                )
+
+                # Store for query access
+                self._extracted_result = extract_result.final_result
+                self._result_type = extract_result.result_type
+                self._result_summary = extract_result.summary
+
                 return RalphWorkflowOutput(
                     completed=True,
                     iterations_used=self._iteration + 1,
                     final_response=eval_result.final_response,
                     completion_detected=has_promise,
+                    extracted_result=self._extracted_result,
+                    result_type=self._result_type,
+                    result_summary=self._result_summary,
                 )
 
             self._iteration += 1
 
         # Max iterations reached without completion
+        extract_result = await workflow.execute_activity(
+            extract_final_result,
+            ExtractFinalResultInput(
+                prompt=input.prompt,
+                progress_summary=self._progress_summary,
+                history=self._history[-5:],  # Last 5 messages
+                completion_promise=input.completion_promise,
+                completion_detected=False,
+                max_iterations=input.max_iterations,
+            ),
+            start_to_close_timeout=timedelta(minutes=2),
+            retry_policy=RetryPolicy(
+                maximum_attempts=3,
+                initial_interval=timedelta(seconds=1),
+                maximum_interval=timedelta(seconds=30),
+            ),
+            summary=f"iteration {self._iteration}: extracting result (max iterations reached)",
+        )
+
+        self._extracted_result = extract_result.final_result
+        self._result_type = extract_result.result_type
+        self._result_summary = (
+            f"Max iterations reached ({input.max_iterations}) without completion. "
+            f"{extract_result.summary}"
+        )
+
         return RalphWorkflowOutput(
             completed=False,
             iterations_used=self._iteration,
-            final_response=self._progress_summary,
+            final_response=(
+                f"Max iterations reached ({input.max_iterations}) without completion.\n\n"
+                f"{self._extracted_result}"
+            ),
             completion_detected=False,
+            extracted_result=self._extracted_result,
+            result_type=self._result_type,
+            result_summary=self._result_summary,
         )

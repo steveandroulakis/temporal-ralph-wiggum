@@ -1,6 +1,7 @@
 """Worker for Ralph Wiggum workflow."""
 
 import asyncio
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -11,6 +12,7 @@ from .activities import (
     generate_tasks,
     execute_task,
     evaluate_iteration_completion,
+    extract_final_result,
 )
 
 TASK_QUEUE = "ralph-wiggum-queue"
@@ -18,6 +20,7 @@ TASK_QUEUE = "ralph-wiggum-queue"
 
 async def run_worker():
     """Run the worker."""
+    logging.basicConfig(level=logging.INFO)
     client = await Client.connect("localhost:7233")
 
     # Use ThreadPoolExecutor so activities don't block the event loop
@@ -32,6 +35,7 @@ async def run_worker():
                 generate_tasks,
                 execute_task,
                 evaluate_iteration_completion,
+                extract_final_result,
             ],
             activity_executor=activity_executor,
         )
