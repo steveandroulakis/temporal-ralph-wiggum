@@ -6,113 +6,130 @@ from temporalio import activity
 
 from .models import (
     DEFAULT_MODEL,
-    PRD,
-    Story,
-    GeneratePRDInput,
+    DecideIterationInput,
+    DecideIterationOutput,
     GenerateTasksInput,
     ExecuteTaskInput,
-    EvaluateStoryInput,
-    EvaluateStoryOutput,
-    EvaluateOverallInput,
+    EvaluateIterationInput,
+    EvaluateIterationOutput,
 )
 
 
 @activity.defn
-async def generate_prd(input: GeneratePRDInput) -> PRD:
-    """Generate high-level stories from prompt. Run once on first iteration."""
+async def decide_iteration_mode(input: DecideIterationInput) -> DecideIterationOutput:
+    """Decide whether this iteration should be single-task or multi-task."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    system = """Break down the user's task into 3-7 high-level stories.
-Each story should be an independently completable deliverable.
-Use the create_prd tool to output your stories.
+    history_context = ""
+    if input.history:
+        history_context = "\n\nRecent conversation:\n" + "\n".join(
+            f"[{m['role']}]: {m['content'][:500]}..." if len(m['content']) > 500 else f"[{m['role']}]: {m['content']}"
+            for m in input.history[-3:]
+        )
+
+    system = f"""You are deciding how to approach the next iteration of work.
+
+Original task: {input.prompt}
+
+{f"Progress so far: {input.progress_summary}" if input.progress_summary else "No progress yet."}
+{history_context}
+
+Iteration: {input.iteration + 1}
+
+Decide between:
+- "single": One focused task for this iteration (simpler, more focused)
+- "multi": Multiple related tasks for this iteration (when several steps needed)
+
+Use the decide_mode tool to output your decision.
 
 CRITICAL RULES:
-- Each story = a distinct piece of work that can be verified when complete
-- Stories should be ordered by logical dependency/priority
-- DO NOT include meta-tasks like "signal completion", "emit done tag", or "finalize"
-- DO NOT include setup/teardown stories unless explicitly part of the task
-- Focus on actual deliverables the user asked for"""
+- DO NOT include tasks about signaling completion or emitting tags
+- Focus on actual work that advances the goal
+- PREFER "multi" mode to break work into granular steps when possible
+- Only use "single" when the remaining work is truly atomic/indivisible
+- Err on side of smaller, focused tasks over bundling related work
+"""
 
-    messages = [{"role": "user", "content": input.prompt}]
+    messages = [{"role": "user", "content": "Decide the approach for the next iteration."}]
 
     response = client.messages.create(
-        model=input.model,
-        max_tokens=2048,
+        model=DEFAULT_MODEL,
+        max_tokens=1024,
         system=system,
         messages=messages,
         tools=[
             {
-                "name": "create_prd",
-                "description": "Create a product requirements document with stories",
+                "name": "decide_mode",
+                "description": "Decide iteration mode",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "stories": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "Short title for the story",
-                                    },
-                                    "description": {
-                                        "type": "string",
-                                        "description": "Detailed description of what needs to be done",
-                                    },
-                                },
-                                "required": ["title", "description"],
-                            },
-                        }
+                        "mode": {
+                            "type": "string",
+                            "enum": ["single", "multi"],
+                            "description": "Whether to do a single task or multiple tasks",
+                        },
+                        "single_task_content": {
+                            "type": "string",
+                            "description": "If mode=single, the task content. Empty if mode=multi.",
+                        },
+                        "rationale": {
+                            "type": "string",
+                            "description": "Brief explanation of why this mode was chosen",
+                        },
                     },
-                    "required": ["stories"],
+                    "required": ["mode", "rationale"],
                 },
             }
         ],
-        tool_choice={"type": "tool", "name": "create_prd"},
+        tool_choice={"type": "tool", "name": "decide_mode"},
     )
 
-    # Extract stories from tool call
     tool_use = next(b for b in response.content if b.type == "tool_use")
-    stories = [
-        Story(
-            id=f"story-{i + 1}",
-            title=s["title"],
-            description=s["description"],
-            status="pending",
-        )
-        for i, s in enumerate(tool_use.input["stories"])
-    ]
+    result = tool_use.input
 
-    return PRD(stories=stories)
+    return DecideIterationOutput(
+        mode=result["mode"],
+        single_task_content=result.get("single_task_content", ""),
+        rationale=result["rationale"],
+    )
 
 
 @activity.defn
 async def generate_tasks(input: GenerateTasksInput) -> list[dict]:
-    """Generate tasks for a SINGLE story. Called each iteration."""
+    """Generate 2-5 tasks for current iteration (multi-task mode)."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    system = f"""Generate 2-5 concrete tasks to complete ONLY this story.
+    history_context = ""
+    if input.history:
+        history_context = "\n\nRecent conversation:\n" + "\n".join(
+            f"[{m['role']}]: {m['content'][:500]}..." if len(m['content']) > 500 else f"[{m['role']}]: {m['content']}"
+            for m in input.history[-3:]
+        )
 
-Story: {input.story.title}
-Description: {input.story.description}
+    system = f"""Generate 2-5 concrete tasks for THIS ITERATION ONLY.
 
-{f"Progress so far: {input.progress_summary}" if input.progress_summary else ""}
+Original task: {input.prompt}
 
-CRITICAL RULES:
-- ONLY generate tasks for the story above - ignore any broader context
-- The story description is your SOLE source of requirements
-- DO NOT include tasks from other stories or future work
+{f"Progress so far: {input.progress_summary}" if input.progress_summary else "No progress yet."}
+{history_context}
+
+Iteration: {input.iteration + 1}
+
+CRITICAL - YOU ARE IN A LOOP:
+- This workflow runs in a loop until completion is detected
+- If this iteration doesn't complete the goal, another iteration runs automatically with your progress
+- DO NOT generate "revision" or "improvement" tasks - the loop handles re-iteration naturally
+- Generate tasks for the NEXT LOGICAL STEP only, not the full path to completion
+
+RULES:
+- Tasks should be actionable work for THIS iteration
 - DO NOT include tasks about signaling completion or emitting tags
-- Each task should directly contribute to completing THIS story's description
-- Iteration: {input.iteration}"""
+- DO NOT include tasks that assume you need to "try again" or "revise" - the loop does that
+- Build on previous progress if any
+- Each task needs a 2-3 word summary describing the action (e.g. "drafting poem", "scoring result")"""
 
-    messages = [
-        {
-            "role": "user",
-            "content": f"Create tasks for story: {input.story.title}\n\n{input.story.description}",
-        }
-    ]
+    messages = [{"role": "user", "content": "Generate tasks for this iteration."}]
 
     response = client.messages.create(
         model=DEFAULT_MODEL,
@@ -122,7 +139,7 @@ CRITICAL RULES:
         tools=[
             {
                 "name": "create_tasks",
-                "description": "Create tasks for the current story",
+                "description": "Create tasks for this iteration",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -135,8 +152,12 @@ CRITICAL RULES:
                                         "type": "string",
                                         "description": "Description of the task",
                                     },
+                                    "summary": {
+                                        "type": "string",
+                                        "description": "2-3 word action summary (e.g. 'drafting poem', 'scoring result')",
+                                    },
                                 },
-                                "required": ["content"],
+                                "required": ["content", "summary"],
                             },
                         }
                     },
@@ -147,29 +168,32 @@ CRITICAL RULES:
         tool_choice={"type": "tool", "name": "create_tasks"},
     )
 
-    # Extract tasks from tool call
     tool_use = next(b for b in response.content if b.type == "tool_use")
-    return [{"content": t["content"], "status": "pending"} for t in tool_use.input["tasks"]]
+    return [{"content": t["content"], "summary": t["summary"], "status": "pending"} for t in tool_use.input["tasks"]]
 
 
 @activity.defn
 async def execute_task(input: ExecuteTaskInput) -> str:
-    """Execute a single task from the plan."""
+    """Execute a single task."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
     task_context = f"Task {input.task_index + 1}/{input.total_tasks}: {input.task_content}"
 
-    system_msg = f"""You are working on a multi-step task. This is iteration {input.iteration + 1}.
+    system_msg = f"""You are completing ONE step in a multi-step workflow.
 
-Original task: {input.original_prompt}
+YOUR TASK (do ONLY this):
+{input.task_content}
 
-Current story: {input.story_context}
+CRITICAL CONSTRAINTS:
+- Complete ONLY the task above - nothing more
+- Do NOT anticipate or work on future steps
+- Do NOT look ahead at the overall goal
+- If task says "write X", write X only - don't also revise/improve/evaluate
+- Stay narrowly focused on the specific deliverable requested
+- Stop when this single task is done
 
-Current step: {task_context}
-
-Focus on completing THIS specific step thoroughly.
 Build on any previous work shown in the conversation history.
-Provide concrete output, code, or results as appropriate."""
+Provide your output for this task only."""
 
     messages = list(input.history) + [{"role": "user", "content": task_context}]
 
@@ -184,126 +208,78 @@ Provide concrete output, code, or results as appropriate."""
 
 
 @activity.defn
-async def evaluate_story_completion(input: EvaluateStoryInput) -> EvaluateStoryOutput:
-    """Evaluate if a story is complete based on task outputs."""
+async def evaluate_iteration_completion(input: EvaluateIterationInput) -> EvaluateIterationOutput:
+    """Evaluate if the overall task is complete after this iteration."""
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-    # Format task outputs for evaluation
     outputs_text = "\n\n---\n\n".join(
-        f"Task output {i + 1}:\n{output}" for i, output in enumerate(input.task_outputs)
+        f"Output {i + 1}:\n{output}" for i, output in enumerate(input.task_outputs)
     )
 
-    system = f"""Evaluate whether a story has been completed based on the task outputs.
+    system = f"""Evaluate whether the original task has been completed based on this iteration's work.
 
-Story: {input.story.title}
-Description: {input.story.description}
-
-Original task context: {input.original_prompt}
+Original task: {input.prompt}
 
 {f"Previous progress: {input.progress_summary}" if input.progress_summary else ""}
 
-Use the evaluate_story tool to provide your evaluation.
+This iteration's outputs:
+{outputs_text}
 
-EVALUATION CRITERIA:
-- Be STRICT: partial completion = NOT complete
-- The story's requirements must be fully satisfied
-- If outputs only partially address the story, mark as incomplete
-- Consider: Did the outputs actually deliver what the story requires?"""
+Use the evaluate_iteration tool to provide your evaluation.
 
-    messages = [
-        {
-            "role": "user",
-            "content": f"Evaluate if this story is complete based on these outputs:\n\n{outputs_text}",
-        }
-    ]
-
-    response = client.messages.create(
-        model=DEFAULT_MODEL,
-        max_tokens=1024,
-        system=system,
-        messages=messages,
-        tools=[
-            {
-                "name": "evaluate_story",
-                "description": "Evaluate story completion",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "is_complete": {
-                            "type": "boolean",
-                            "description": "Whether the story is fully complete",
-                        },
-                        "summary": {
-                            "type": "string",
-                            "description": "Brief summary of what was accomplished",
-                        },
-                        "progress_update": {
-                            "type": "string",
-                            "description": "Update to add to progress summary",
-                        },
-                    },
-                    "required": ["is_complete", "summary", "progress_update"],
-                },
-            }
-        ],
-        tool_choice={"type": "tool", "name": "evaluate_story"},
-    )
-
-    # Extract evaluation from tool call
-    tool_use = next(b for b in response.content if b.type == "tool_use")
-    result = tool_use.input
-
-    # Build updated progress summary
-    updated_progress = input.progress_summary
-    if updated_progress:
-        updated_progress += "\n"
-    updated_progress += f"- {input.story.title}: {result['progress_update']}"
-
-    return EvaluateStoryOutput(
-        is_complete=result["is_complete"],
-        summary=result["summary"],
-        updated_progress=updated_progress,
-    )
-
-
-@activity.defn
-async def evaluate_overall_completion(input: EvaluateOverallInput) -> str:
-    """Final check when all stories complete. Returns response with promise tag if truly done."""
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-
-    # Format PRD status
-    prd_summary = "\n".join(
-        f"- [{s.status.upper()}] {s.title}: {s.completion_summary or s.description}"
-        for s in input.prd.stories
-    )
-
-    system = f"""All stories have been marked complete. Review the overall work and confirm completion.
-
-Original task: {input.original_prompt}
-
-PRD Status:
-{prd_summary}
-
-If you are SATISFIED that all work is truly complete, output the completion signal.
-If something is missing or incomplete, explain what needs more work.
-
-To signal completion, output EXACTLY this tag:
+If the work is TRULY COMPLETE and satisfies the original task, include this exact tag in final_response:
 <promise>{input.completion_promise}</promise>
 
-CRITICAL: Only output the promise tag if the work is TRULY complete."""
+CRITICAL RULES:
+- Be STRICT: partial completion = NOT complete
+- Only emit the promise tag if ALL requirements are satisfied
+- Update progress summary with what was accomplished this iteration"""
 
-    messages = [
-        {
-            "role": "user",
-            "content": "Review the completed work and determine if the original task is satisfied.",
-        }
-    ]
+    messages = [{"role": "user", "content": "Evaluate if the task is complete."}]
 
     response = client.messages.create(
         model=DEFAULT_MODEL,
         max_tokens=2048,
         system=system,
         messages=messages,
+        tools=[
+            {
+                "name": "evaluate_iteration",
+                "description": "Evaluate iteration completion",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "completion_detected": {
+                            "type": "boolean",
+                            "description": "Whether the task is fully complete",
+                        },
+                        "progress_update": {
+                            "type": "string",
+                            "description": "What was accomplished this iteration",
+                        },
+                        "final_response": {
+                            "type": "string",
+                            "description": "Response text. Include <promise>PHRASE</promise> if complete.",
+                        },
+                    },
+                    "required": ["completion_detected", "progress_update", "final_response"],
+                },
+            }
+        ],
+        tool_choice={"type": "tool", "name": "evaluate_iteration"},
     )
 
-    return response.content[0].text
+    tool_use = next(b for b in response.content if b.type == "tool_use")
+    result = tool_use.input
+
+    # Build updated progress
+    updated_progress = input.progress_summary
+    if updated_progress:
+        updated_progress += "\n"
+    updated_progress += f"- Iteration: {result['progress_update']}"
+
+    return EvaluateIterationOutput(
+        updated_progress=updated_progress,
+        completion_detected=result["completion_detected"],
+        final_response=result["final_response"],
+    )

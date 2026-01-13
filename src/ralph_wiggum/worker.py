@@ -7,11 +7,10 @@ from temporalio.worker import Worker
 
 from .workflows import RalphWorkflow
 from .activities import (
-    generate_prd,
+    decide_iteration_mode,
     generate_tasks,
     execute_task,
-    evaluate_story_completion,
-    evaluate_overall_completion,
+    evaluate_iteration_completion,
 )
 
 TASK_QUEUE = "ralph-wiggum-queue"
@@ -29,11 +28,10 @@ async def run_worker():
             task_queue=TASK_QUEUE,
             workflows=[RalphWorkflow],
             activities=[
-                generate_prd,
+                decide_iteration_mode,
                 generate_tasks,
                 execute_task,
-                evaluate_story_completion,
-                evaluate_overall_completion,
+                evaluate_iteration_completion,
             ],
             activity_executor=activity_executor,
         )
