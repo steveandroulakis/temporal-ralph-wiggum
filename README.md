@@ -49,6 +49,12 @@ This prompt demonstrates the loop's iterative refinement capability. It asks the
 python run_workflow.py --prompt "The 'Ralph Wiggum loop' (named after a Simpsons character) is an autonomous AI coding technique where an AI agent is repeatedly fed the same prompt in a continuous loop until a task is complete, with progress persisting in files and git history rather than the context window. Draft one poem (4 lines) about this concept, and link it to Ralph the character himself. Then score the poem out of 10 (you are a poetry expert and very discerning judge and want the poem to be clear and to capture the vibe of the topic at hand). NOTE: ONLY a poem with 4 lines scores 10, ensure you validate this. If the poem doesn't score 10, then collect feedback about the poem and why it scored the way it did, report this as lessons, and end without the promise done. End with <poem>(the final poem)</poem> and <promise>DONE</promise> only when a poem scores 10." --completion-promise "DONE"
 ```
 
+### Terrible Cake Baking Instructions example (max-iterations)
+This prompt will likely never reach completion, demonstrating the max-iterations cutoff. The AI is tasked with generating cake baking instructions that are intentionally poor. Each iteration will try to improve it, but since max iterations is 2, there isn't much chance of success:
+```bash
+python run_workflow.py --prompt "Describe making a chocolate cake in steps. You're a terrible baker and will be simple with it. Score the method out of 10 (as an expert baker), and if under 10 out of 10 (you are a cake baker), gather feedback on what to improve. Return format will be: <improvements>(summary of improvements over iterations, if any)</improvements> and <promise>DONE</promise> but ONLY when a cake recipe scores at least 10 out of 10." --completion-promise "DONE" --max-iterations 2
+```
+
 ## CLI options
 ```bash
 python run_workflow.py --help
