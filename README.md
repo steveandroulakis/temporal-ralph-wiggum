@@ -6,7 +6,7 @@ The workflow stops when a completion phrase is detected or a max iteration limit
 
 👉 **[See the core while loop that powers Ralph](https://github.com/steveandroulakis/temporal-ralph-wiggum/blob/main/src/ralph_wiggum/workflows.py#L68)** - the heart of the iteration logic.
 
-**NOTE:** This demo can only generate and manipulate text. It does not yet implement local file system access, nor unix command access.
+**NOTE:** At present, this demo can only generate and manipulate text. It does not yet implement local file system access, nor unix command access. These features are planned for future versions.
 
 ## How it works
 - Each iteration: `decide_iteration_mode` chooses single vs multi-task mode
