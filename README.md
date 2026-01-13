@@ -2,6 +2,8 @@
 
 Temporal workflow implementing the **Ralph Wiggum loop** - an autonomous AI coding technique (named after the Simpsons character) where an AI agent is repeatedly fed the same prompt in a continuous loop until task completion.
 
+![Ralph Wiggum UI](ralph-ui.jpg)
+
 The workflow stops when a completion phrase is detected or a max iteration limit is reached.
 
 👉 **[See the core while loop that powers Ralph](https://github.com/steveandroulakis/temporal-ralph-wiggum/blob/main/src/ralph_wiggum/workflows.py#L68)** - the heart of the iteration logic.
