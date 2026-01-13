@@ -45,7 +45,7 @@ python run_workflow.py --prompt "1) Summarize the text I provide in three differ
 ### Noir detective story example
 Iterative creative writing with strict quality bar. The AI drafts a short noir detective story, scores it as a discerning expert, and only completes when it hits 10/10. Failed attempts collect feedback as "lessons" and retry—demonstrating how the loop refines output across iterations until quality criteria are met:
 ```bash
-python run_workflow.py --prompt 'Draft a short (few-paragraph only!) detective story, in noir style. Then score the story out of 10 (you'\''re a discerning detective novel expert, and expert in noir style). If none score 10, then collect feedback about the story and why it scored the way it did, report this as lessons, and end without the promise done. End with <story>(the final story)</story>, <improvements>(summary of improvements over iterations, if any)</improvements> and <promise>DONE</promise> but ONLY when a story scores 10.' --completion-promise "DONE"
+python run_workflow.py --prompt 'Draft a short (few-paragraph only!) detective story, in noir style. Then score the story out of 10 (you'\''re a discerning detective novel expert, and expert in noir style). If it doesn't score 10, then collect feedback about the story and why it scored the way it did, report this as lessons, and end without the promise done. End with <story>(the final story)</story>, <improvements>(summary of improvements over iterations, if any)</improvements> and <promise>DONE</promise> but ONLY when a story scores 10.' --completion-promise "DONE"
 ```
 
 ### Self-referential loop example
